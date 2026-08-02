@@ -4,14 +4,15 @@
 
 ## PHASE 0 — SETUP
 
-- [ ] Clone HackerRank repo → get `dataset/` folder locally
-- [ ] Copy all CSV + `media/` into `code/dataset/`
-- [ ] `cp .env.example .env` → paste `GOOGLE_API_KEY` (get from [aistudio.google.com](https://aistudio.google.com) → no card required)
-- [ ] **Google Student Ambassador perk**: check ambassador portal for elevated rate limits or credits before using the default free tier
-- [ ] Update `requirements.txt`: replace `anthropic>=0.39.0` and `faster-whisper>=1.0.0` with `google-generativeai>=0.8.0`
-- [ ] `pip install -r requirements.txt`
-- [ ] Verify SDK loads: `python -c "import google.generativeai as genai; print('ok')"`
+- [x] Clone HackerRank repo → get `dataset/` folder locally
+- [x] Copy all CSV + `media/` into `code/dataset/`
+- [x] `cp .env.example .env` → paste `GOOGLE_API_KEY` (get from [aistudio.google.com](https://aistudio.google.com) → no card required)
+- [x] **Google Student Ambassador perk**: check ambassador portal for elevated rate limits or credits before using the default free tier
+- [x] Update `requirements.txt`: replace `anthropic>=0.39.0` and `faster-whisper>=1.0.0` with `google-generativeai>=0.8.0`
+- [x] `pip install -r requirements.txt`
+- [x] Verify SDK loads: `python -c "import google.generativeai as genai; print('ok')"`
 - [ ] Verify API key works: `python -c "import google.generativeai as genai, os; genai.configure(api_key=os.environ['GOOGLE_API_KEY']); m=genai.GenerativeModel('gemini-2.0-flash'); print(m.generate_content('ping').text)"`
+
 
 ---
 
