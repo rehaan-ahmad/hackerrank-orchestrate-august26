@@ -34,18 +34,18 @@ for f in os.listdir("dataset"):
         print(df.head(2).to_string())
 ```
 
-- [ ] `messages.csv` — note exact column names (esp. media_type values, conversation_type values)
-- [ ] `sample_messages.csv` — study action distribution, message_type distribution, reason style
-- [ ] `users.csv` — find quiet_hours column names exactly
-- [ ] `groups.csv` — find group_type values (family? work? society?)
-- [ ] `group_members.csv` — find mute/role column names
-- [ ] `business_accounts.csv` — find verified column name + values (bool? string?)
-- [ ] `user_business_history.csv` — find opt-in/opt-out/order column names
-- [ ] `message_history.csv` — check if sender_user_id + business_id exist
-- [ ] `message_events.csv` — list all unique event_type values
-- [ ] `images.csv` — find exact image_id + file_path column names
-- [ ] `voice_notes.csv` — find exact voice_note_id + file_path column names
-- [ ] `daily_notification_summary.csv` — see what metric columns exist
+- [x] `messages.csv` — note exact column names (esp. media_type values, conversation_type values)
+- [x] `sample_messages.csv` — study action distribution, message_type distribution, reason style
+- [x] `users.csv` — find quiet_hours column names exactly (`do_not_disturb_window`)
+- [x] `groups.csv` — find group_type values (family? work? society?)
+- [x] `group_members.csv` — find mute/role column names (`role`, `group_muted_by_user`)
+- [x] `business_accounts.csv` — find verified column name + values (`verified`: 1/0)
+- [x] `user_business_history.csv` — find opt-in/opt-out/order column names (`allows_promotions`, `promotions_opted_out_at`)
+- [x] `message_history.csv` — check if sender_user_id + business_id exist
+- [x] `message_events.csv` — list all unique event_type values
+- [x] `images.csv` — find exact image_id + file_path column names (`image_id`, `file_path`)
+- [x] `voice_notes.csv` — find exact voice_note_id + file_path column names (`voice_note_id`, `file_path`)
+- [x] `daily_notification_summary.csv` — see what metric columns exist (`user_id`, `date`, `notifications_sent`, `notifications_dismissed`)
 
 ### 1.2 Check media files
 
@@ -55,10 +55,10 @@ ls dataset/media/ | wc -l
 file dataset/media/<first_audio_file>   # check format: ogg? mp3? wav?
 ```
 
-- [ ] Note image file extensions (jpg/png/webp) — all supported by Gemini inline
-- [ ] Note audio file extensions — Gemini natively supports: `audio/ogg`, `audio/mp3`, `audio/wav`, `audio/opus`, `audio/aac`, `audio/flac`
-- [ ] No ffmpeg, no whisper, no conversion needed — Gemini handles raw WhatsApp `.ogg` files directly
-- [ ] Check total media folder size: `du -sh dataset/media/` — if individual files > 20MB, must use File API upload instead of inline base64
+- [x] Note image file extensions (jpg/png/webp) — all supported by Gemini inline (.jpg - 20 files)
+- [x] Note audio file extensions — Gemini natively supports: `audio/ogg`, `audio/mp3`, `audio/wav`, `audio/opus`, `audio/aac`, `audio/flac` (.mp3 - 13 files)
+- [x] No ffmpeg, no whisper, no conversion needed — Gemini handles raw mp3/ogg files directly
+- [x] Check total media folder size: `du -sh dataset/media/` — 11.29 MB total, all files < 1MB inline ready
 
 ### 1.3 Study sample_messages.csv deeply
 
@@ -71,10 +71,10 @@ print(df["confidence"].describe())
 print(df[df["evidence_message_ids"] != "none"]["evidence_message_ids"].head())
 ```
 
-- [ ] How are reasons phrased? Match that style in the prompt.
-- [ ] What confidence range is used? Calibrate accordingly.
-- [ ] What does evidence look like when present vs "none"?
-- [ ] What's the action split? (notify/digest/mute %) — helps calibrate default outputs
+- [x] How are reasons phrased? Match that style in the prompt.
+- [x] What confidence range is used? Calibrate accordingly (0.78 - 0.91).
+- [x] What does evidence look like when present vs "none"?
+- [x] What's the action split? (notify: 30%, digest: 36.7%, mute: 33.3%)
 
 ### 1.4 Fix column name mismatches in code
 
@@ -84,6 +84,7 @@ After exploration, update hardcoded column name assumptions in:
 - [ ] `context_builder.py` — `_image_ctx`: fix `id_col` and `path_col` detection
 - [ ] `context_builder.py` — `_voice_ctx`: fix `id_col` and `path_col` detection
 - [ ] `evidence_retriever.py` — fix column name checks in `find_evidence`
+
 
 ---
 
