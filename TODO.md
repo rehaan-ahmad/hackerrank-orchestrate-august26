@@ -92,113 +92,42 @@ After exploration, update hardcoded column name assumptions in:
 
 ### 2.1 context_builder.py
 
-- [ ] **Column guard**: wrap every `.columns` check with actual column from CSV (found in Phase 1)
-- [ ] **`_sender_ctx` filter bug**: `self.message_history.get(...)` is wrong — check if column exists with `"col" in df.columns` instead
-- [ ] **`_user_hist_index`**: change groupby key to string: `str(uid)` → also cast `msg["user_id"]` to string when looking up
-- [ ] **Media path**: `os.path.join(dataset_dir, info[path_col])` — if `file_path` already contains `media/` prefix, don't double-prepend. Add check:
-  ```python
-  if str(info[path_col]).startswith("media/") or str(info[path_col]).startswith("dataset/"):
-      full_path = os.path.join(self.dataset_dir, str(info[path_col]))
-  else:
-      full_path = os.path.join(self.dataset_dir, "media", str(info[path_col]))
-  ```
-- [ ] **NaN group_id**: `msg.get("group_id")` returns `nan` (float) for non-group msgs — add: `gid = msg.get("group_id"); gid = None if pd.isna(gid) else gid`
-- [ ] **Same fix for business_id, sender_user_id, media_id** — all can be `nan` float
+- [x] **Column guard**: wrap every `.columns` check with actual column from CSV (found in Phase 1)
+- [x] **`_sender_ctx` filter bug**: check if column exists with `"col" in df.columns` instead
+- [x] **`_user_hist_index`**: cast user IDs and group IDs safely as clean strings
+- [x] **Media path**: check if file path starts with `media/` or `dataset/` before combining
+- [x] **NaN group_id**: `msg.get("group_id")` cleaned with `clean_val` helper
+- [x] **Same fix for business_id, sender_user_id, media_id** — all cleaned safely with `clean_val`
 
 ### 2.2 evidence_retriever.py
 
-- [ ] **`find_evidence` strategies**: guard each with column existence checks before filtering
-- [ ] **Text similarity**: `message_text` can be `nan` — add `str(text) != "nan"` guard
-- [ ] **Evidence dedup**: ensure same ID from multiple strategies doesn't produce duplicates in output
+- [x] **`find_evidence` strategies**: guard each with column existence checks before filtering
+- [x] **Text similarity**: `message_text` handled safely with `clean_val`
+- [x] **Evidence dedup**: ensure same ID from multiple strategies doesn't produce duplicates in output
 
 ### 2.3 router.py — rewrite for Gemini SDK
 
-Replace entire Anthropic client with `google-generativeai`:
+- [x] **Rewrite `router.py`** with Gemini client (`google-generativeai`)
+- [x] **Remove** all `anthropic` imports
+- [x] **Pass image as `PIL.Image`** directly to Gemini SDK
+- [x] **Pass audio inline** as `genai.protos.Blob`
+- [x] **Response parse**: use `response.text` with regex JSON extractor
+- [x] **Safety filter handling**: check prompt_feedback and fallback safely
+- [x] **JSON parse fallback**: robust regex matching with DOTALL
+- [x] **Max reason length**: truncate at 280 chars
+- [x] **Backoff retries**: added exponential sleep on 429 Rate Limits
 
-```python
-import google.generativeai as genai
+### 2.4 media_processor.py — simplified MIME and path resolver
 
-genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-self.model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
-    system_instruction=SYSTEM_PROMPT,
-    generation_config=genai.GenerationConfig(
-        temperature=0.2,       # low temp = consistent routing
-        max_output_tokens=512,
-    )
-)
-```
-
-API call (text only):
-```python
-response = self.model.generate_content(prompt_text)
-result_text = response.text
-```
-
-API call (image inline):
-```python
-import PIL.Image
-img = PIL.Image.open(image_path)
-response = self.model.generate_content([img, prompt_text])
-```
-
-API call (voice inline — ogg/mp3/wav):
-```python
-audio_part = genai.protos.Part(
-    inline_data=genai.protos.Blob(
-        mime_type="audio/ogg",
-        data=open(audio_path, "rb").read()
-    )
-)
-response = self.model.generate_content([audio_part, prompt_text])
-```
-
-- [ ] **Rewrite `router.py`** with Gemini client (see above)
-- [ ] **Remove** all `anthropic` imports
-- [ ] **Pass image as `PIL.Image`** not base64 string — Gemini SDK accepts PIL directly
-- [ ] **Pass audio inline** as `genai.protos.Blob` — no transcription step needed
-- [ ] **Response parse**: use `response.text` not `response.content[0].text`
-- [ ] **Safety filter handling**: Gemini may block content with `response.prompt_feedback.block_reason` — add check, fall back to rule-based router if blocked
-- [ ] **JSON parse fallback**: same regex approach works — verify `re.DOTALL`
-- [ ] **Max reason length**: truncate at 300 chars
-- [ ] **Image size guard**: Gemini inline limit is 20MB — still add check for very large files, use File API upload path for >10MB
-
-### 2.4 media_processor.py — simplify drastically
-
-Whisper is gone. Gemini handles both images and audio natively in the same API call as the routing decision. `media_processor.py` shrinks to just path resolution + mime type detection:
-
-```python
-MIME_MAP = {
-    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
-    ".gif": "image/gif", ".webp": "image/webp",
-    ".ogg": "audio/ogg", ".mp3": "audio/mp3", ".wav": "audio/wav",
-    ".opus": "audio/opus", ".aac": "audio/aac", ".flac": "audio/flac",
-    ".m4a": "audio/mp4",
-}
-
-def get_media(path: str) -> dict:
-    ext = os.path.splitext(path)[1].lower()
-    mime = MIME_MAP.get(ext)
-    if not mime or not os.path.exists(path):
-        return {}
-    return {"path": path, "mime_type": mime}
-```
-
-- [ ] **Delete** `_load_whisper`, `transcribe_voice`, `describe_image`, `get_image_base64` methods
-- [ ] **Replace** with single `get_media(path) -> dict` returning path + mime_type
-- [ ] **Remove** `faster-whisper`, `Pillow` from requirements.txt (Gemini SDK handles internally — keep Pillow only if needed elsewhere)
-- [ ] **In `context_builder.py`**: `_image_ctx` and `_voice_ctx` now just resolve paths and return `{"path": ..., "mime_type": ...}`
-- [ ] **In `router.py`**: read file bytes + mime_type → pass as `genai.protos.Blob` inline
-- [ ] Voice notes and images now route through **same API call** as text — no separate transcription pass, no extra cost
+- [x] Single `resolve_media_info` function returning path, MIME type, and size
+- [x] Gemini handles images and audio inline without Whisper/OCR pre-processing
 
 ### 2.5 prompts.py
 
-- [ ] **Reason style**: study sample_messages reasons → update the prompt instruction to match length + tone
-- [ ] **Message type calibration**: if sample shows `promotion` is rare and `business_update` is common, say so in prompt
-- [ ] **Add direct mention detection**: check if `message_text` contains `@` or user's name
-- [ ] **Quiet hours logic**: pass current hour extracted from `created_at` + quiet hours range to prompt explicitly as "IS IN QUIET HOURS: yes/no" — don't make Gemini calculate it
-- [ ] **Voice prompt addition**: when audio is present, add to prompt: `"A voice note is attached. Transcribe it, then use the content and tone in your routing decision."` — Gemini will do both in one pass
-- [ ] **Image prompt addition**: when image is present, add: `"An image is attached. Identify if it is promotional, informational, scam-related, or personal before routing."`
+- [x] **Reason style**: matched 1-sentence prompt output requirements
+- [x] **Message type calibration**: standard schema matching sample dataset
+- [x] **Quiet hours logic**: pre-computed boolean `in_quiet_hours` passed to prompt
+- [x] **Voice & Image instructions**: explicit multimodal analysis directives
 
 ---
 
@@ -206,18 +135,15 @@ def get_media(path: str) -> dict:
 
 ### 3.1 Pre-compute quiet hours flag
 
-Before calling LLM, compute whether message arrives in quiet hours.
-Pass as explicit boolean in prompt instead of raw times.
+- [x] Add `utils.py` with `is_in_quiet_hours(timestamp, window)`
+- [x] Add `in_quiet_hours` to prompt as explicit field
 
-```python
-# In context_builder.py _user_ctx or build()
-from utils import is_in_quiet_hours
-in_quiet = is_in_quiet_hours(msg.get("created_at",""), user.get("quiet_hours_start",""), user.get("quiet_hours_end",""))
-context["in_quiet_hours"] = in_quiet
-```
+### 3.2 Pre-compute scam score
 
-- [ ] Add `utils.py` with `is_in_quiet_hours(timestamp, start, end) -> bool`
-- [ ] Add `is_in_quiet_hours` to prompt as explicit field
+- [x] Add `scam_detector.py` with `check_scam` (checks domain mismatch + scam regex)
+- [x] Short-circuit in `main.py`: write mute/scam row directly, skip API call
+- [x] Log scam short-circuit counts
+
 
 ### 3.2 Pre-compute scam score
 
