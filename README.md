@@ -1,16 +1,30 @@
-# HackerRank Orchestrate
+# HackerRank Orchestrate — Message Notification Router
 
-Starter repository for the **HackerRank Orchestrate** 24-hour hackathon.
+> **AI-Powered WhatsApp Multimodal Notification Routing System**  
+> *Built for HackerRank Orchestrate Hackathon (August 2026)*
 
-## Message Notification Router
+---
 
-Build an AI-powered system for WhatsApp that decides which messages deserve immediate attention, which should wait, and which should be muted.
+## Overview
 
-The system must reason over multimodal messages, including text messages, image posters/screenshots, and voice notes.
+WhatsApp streams are noisy. Users receive family messages, work deadlines, society notices, business promotions, image posters, audio voice notes, and scam attempts in the same inbox. Treating every message identically causes two failures: critical updates get missed, and low-value or unsafe messages interrupt the user.
 
-WhatsApp is noisy. A user can receive family chats, society notices, school updates, co-worker messages, business account promotions, image posters, voice notes, and scams in the same message stream. Treating every message the same creates two bad outcomes: important messages get missed, and unwanted or risky messages interrupt the user.
+This project implements a personalized **Message Notification Router** powered by **Gemini 2.0 Flash**. It processes incoming multimodal messages (Text, Images, Voice Notes) along with rich contextual metadata to decide whether to:
 
-Read [`problem_statement.md`](./problem_statement.md) for the full task spec, input/output schema, allowed values, and submission format.
+- `notify`: Interrupt the user immediately (time-sensitive, urgent, or high-value personal updates)
+- `digest`: Batch for later summary (general discussions, non-urgent news, or social events)
+- `mute`: Suppress silently (low-value promotions, spam, scams, or muted group chatter)
+
+---
+
+## Key Technical Features
+
+- **Native Multimodal Processing**: Directly routes `.jpg` images and `.mp3` audio files to Gemini's native API without external Whisper or OCR pre-processing.
+- **Rule-Based Fast-Path Scam Detection**: Instant short-circuiting for domain spoofing (`official_domain` != `domain_used_by_sender`), OTP theft, and viral chain scams.
+- **Rich Context Aggregation**: Assembles user DND/Quiet Hours, group admin roles, group mute states, and business opt-in preferences.
+- **Evidence Retrieval Engine**: Searches historical interaction data (`message_history.csv`, `message_events.csv`) to populate `evidence_message_ids`.
+- **Confidence Calibration**: Post-processes prediction confidence based on entity context density.
+- **Exponential Backoff & Rate Limit Handling**: Automatic handling of API rate limits (15 RPM / 1,500 RPD).
 
 ---
 
@@ -18,113 +32,119 @@ Read [`problem_statement.md`](./problem_statement.md) for the full task spec, in
 
 ```text
 .
-├── AGENTS.md                         # Rules for AI coding tools + transcript logging
-├── problem_statement.md              # Full challenge statement
-├── README.md                         # You are here
-└── dataset/
-    ├── messages.csv                  # Messages to route
-    ├── output.csv                    # Blank submission template
-    ├── sample_messages.csv           # Solved examples
-    ├── users.csv                     # User notification behavior
-    ├── groups.csv                    # Group metadata
-    ├── group_members.csv             # User-group relationships
-    ├── business_accounts.csv         # Business sender metadata
-    ├── user_business_history.csv     # User-business history
-    ├── message_history.csv           # Historical messages
-    ├── message_events.csv            # User reactions to historical messages
-    ├── images.csv                    # Image IDs and media file paths
-    ├── voice_notes.csv               # Voice note IDs and media file paths
-    ├── daily_notification_summary.csv
-    └── media/
-        ├── images/
-        └── audio/
+├── AGENTS.md                   # AI Coding Agent Rules & Audit Logging Specification
+├── problem_statement.md        # Full HackerRank challenge specification
+├── README.md                   # You are here
+├── requirements.txt            # Python dependencies
+├── .env.example                # API key template
+├── output.csv                  # Main prediction submission file
+├── dataset/                    # Official dataset directory (CSVs + Media)
+│   ├── messages.csv            # Target incoming messages to route
+│   ├── sample_messages.csv     # Solved benchmark ground truth
+│   ├── users.csv               # User profiles & do_not_disturb_window
+│   ├── groups.csv & members    # Group metadata & membership roles
+│   ├── business_accounts.csv   # Business accounts & domain verification
+│   ├── message_history.csv     # Historical interaction records
+│   └── media/                  # Audio (.mp3) and image (.jpg) files
+└── code/                       # Core system implementation
+    ├── main.py                 # Terminal execution entry point
+    ├── router.py               # Gemini 2.0 Flash SDK integration & LLM client
+    ├── context_builder.py      # Personalized multi-entity context assembler
+    ├── scam_detector.py        # Phishing and scam fast-path engine
+    ├── evidence_retriever.py   # Historical evidence lookup
+    ├── media_processor.py      # Path resolution & MIME detector
+    ├── prompts.py              # System & user prompt templates
+    ├── utils.py                # Quiet hours calculator & sanitizers
+    ├── package_submission.py   # Output validator & code.zip builder
+    ├── evaluation/
+    │   └── main.py             # Accuracy & F1 evaluation benchmark
+    └── tests/
+        └── test_router.py      # Unit test suite
 ```
 
 ---
 
-## What You Need to Build
+## Quick Start
 
-For every row in `dataset/messages.csv`, produce one row in `output.csv` with:
+### 1. Installation
 
-| Column | Meaning |
-|---|---|
-| `message_id` | Incoming message ID |
-| `action` | One of `notify`, `digest`, or `mute` |
-| `message_type` | Best-fit message category |
-| `reason` | Short human-readable explanation |
-| `confidence` | Number from `0` to `1` |
-| `evidence_message_ids` | Historical message IDs used as evidence; write `none` if there is no useful evidence |
+Ensure Python 3.10+ is installed, then install the dependencies:
 
-Your system should make personalized decisions using the provided message, user, group, business, media, and historical interaction data.
-For image and voice-note messages, `images.csv` and `voice_notes.csv` only provide file paths; your system should inspect the media files themselves.
+```bash
+pip install -r requirements.txt
+```
 
----
+### 2. Environment Configuration
 
-## Suggested Workflow
+Copy the `.env.example` file and configure your Google Gemini API key:
 
-1. Inspect `dataset/sample_messages.csv` to understand the expected output format.
-2. Load `dataset/messages.csv` and all relevant context files.
-3. Build your routing system using any approach: LLMs, retrieval, rules, classifiers, agents, or hybrids.
-4. Write predictions to `output.csv`.
-5. Evaluate your approach on the solved sample rows before submitting.
+```bash
+cp .env.example .env
+```
 
-You may use any language or runtime. Python, JavaScript, and TypeScript are all reasonable choices.
+Edit `.env`:
+```env
+GOOGLE_API_KEY=your_actual_gemini_api_key
+SLEEP_SEC=0.2
+```
+
+> *Note: If `GOOGLE_API_KEY` is omitted, the engine automatically runs in offline rule-based mode.*
 
 ---
 
-## Requirements
+## Running the Router & Evaluator
 
-Your solution must:
+### Run Full Message Notification Router Pipeline
 
-- be runnable from the terminal
-- read the provided files from `dataset/`
-- produce a valid `output.csv`
-- include one prediction for every `message_id` in `dataset/messages.csv`
-- not use organizer-only files or hardcoded labels
+Processes all incoming messages in `dataset/messages.csv` and outputs `output.csv`:
 
-If you use API keys or secrets, read them from environment variables. Never hardcode secrets in the repo.
+```bash
+python3 code/main.py
+```
 
----
+### Run Benchmark Evaluator
 
-## Evaluation
+Evaluates predictions against ground truth in `dataset/sample_messages.csv`:
 
-Your `output.csv` will be compared against hidden ground-truth labels.
+```bash
+python3 code/evaluation/main.py
+```
 
-The scoring will consider:
+### Run Unit Test Suite
 
-- correctness of `action`
-- correctness of `message_type`
-- usefulness and consistency of `reason`
-- whether `evidence_message_ids` point to relevant historical messages
-- reasonable confidence calibration
+Runs unit tests for quiet hours, scam detection, and utility helpers:
 
-Strong systems will combine retrieval, structured metadata, behavioral history, safety checks, OCR/ASR handling, and contextual reasoning.
+```bash
+python3 code/tests/test_router.py
+```
 
 ---
 
-## Chat Transcript Logging
+## Output Format Specification
 
-This repo includes an [`AGENTS.md`](./AGENTS.md) file for AI coding tools. It asks compatible tools to append conversation summaries to:
+The system generates `output.csv` matching the exact HackerRank contract schema:
 
-| Platform | Path |
-|---|---|
-| macOS / Linux | `$HOME/hackerrank_orchestrate_august26/log.txt` |
-| Windows | `%USERPROFILE%\hackerrank_orchestrate_august26\log.txt` |
-
-Upload this log as your chat transcript at submission time. Do not paste secrets into the chat.
+```csv
+message_id,action,message_type,reason,confidence,evidence_message_ids
+msg_023,mute,business_update,Promotional messages from business accounts muted by user preference.,0.82,message_0101
+msg_091,notify,personal,Personal direct message routed for immediate user notification.,0.82,message_0381
+msg_090,notify,personal,Personal direct message routed for immediate user notification.,0.82,none
+```
 
 ---
 
-## Submission
+## Packaging for HackerRank Submission
 
-Submit the following files as instructed by HackerRank:
+To generate the required `code.zip` submission archive and validate `output.csv`:
 
-1. **Code zip**: full runnable solution, prompts/configs, README, and any evaluation files.
-2. **Predictions CSV**: final `output.csv` for all rows in `dataset/messages.csv`.
-3. **Chat transcript**: the `log.txt` described above.
+```bash
+python3 code/package_submission.py
+```
 
-Before submitting, confirm:
+This verifies schema compliance and creates a clean `code.zip` bundle excluding temporary files and secrets.
 
-- `output.csv` has one row per row in `dataset/messages.csv`.
-- `output.csv` has the exact required columns in the exact required order.
-- Your runnable code and setup instructions are included in `code.zip`.
+---
+
+## License & Authorship
+
+Built by **Rehaan Ahmad** for the **HackerRank Orchestrate** hackathon challenge.
