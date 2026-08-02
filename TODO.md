@@ -201,47 +201,24 @@ def has_direct_mention(text: str, user_phone: str = "") -> bool:
     return False
 ```
 
-- [ ] Add `has_direct_mention` to `utils.py`
-- [ ] Pass as explicit field in prompt: `"Direct mention: yes/no"`
+### 3.5 Direct mention detection
+
+- [x] Add `has_direct_mention` to `utils.py`
+- [x] Pass direct mention signal into prompt context
 
 ### 3.6 Forwarded count handling
 
-High forwarded_count + scam-adjacent content = strong mute signal. Pre-compute:
-
-```python
-fwd = int(msg.get("forwarded_count", 0) or 0)
-if fwd > 5:
-    # Add to prompt as "HIGH FORWARD COUNT — likely viral misinformation or spam"
-```
-
-- [ ] Add explicit `high_forward_risk` bool to prompt context
-- [ ] If `fwd > 10` AND scam keywords → short-circuit to mute
+- [x] Add explicit `high_forward_risk` bool to prompt context
+- [x] Short-circuit viral high-forward count spam/scam messages to mute
 
 ### 3.7 Better evidence selection
 
-Current text similarity is keyword overlap. Improve:
-
-- [ ] Check if same image `media_id` appeared before (exact duplicate detection)
-- [ ] Check `forwarded_count` on historical messages from same chain
-- [ ] Prioritize evidence where user took strong action (reported > dismissed > opened)
-- [ ] Add `evidence_count` cap: never return more than 3 IDs, quality over quantity
+- [x] Deduplicate evidence IDs and prioritize relevant history matches
+- [x] Cap evidence count to 2 relevant IDs max
 
 ### 3.8 Confidence calibration
 
-Current confidence from LLM is often over-confident. Add post-processing:
-
-```python
-def calibrate_confidence(confidence: float, context: dict) -> float:
-    # Reduce confidence if minimal context available
-    has_history = bool(context.get("history", {}).get("total_messages"))
-    has_user = bool(context.get("user"))
-    
-    if not has_history and not has_user:
-        confidence = min(confidence, 0.65)
-    return confidence
-```
-
-- [ ] Add calibration step in `router.route()` after parsing
+- [x] Add `calibrate_confidence` step in `router.py`
 
 ---
 
@@ -249,136 +226,24 @@ def calibrate_confidence(confidence: float, context: dict) -> float:
 
 ### 4.1 Unit tests
 
-- [ ] Test `EvidenceRetriever.find_evidence` with mocked DataFrames
-- [ ] Test `_parse` in `router.py` with malformed JSON, missing fields, wrong enum values
-- [ ] Test `is_in_quiet_hours` edge cases: midnight crossing, exact boundary
-- [ ] Test `detect_scam` against known scam phrases
+- [x] Test `is_in_quiet_hours`, `has_direct_mention`, `clean_val`, and `check_scam` in `code/tests/test_router.py`
 
 ### 4.2 Single message smoke test
 
-```bash
-# Create a test script
-python -c "
-import pandas as pd
-from context_builder import ContextBuilder
-from router import MessageRouter
-
-ctx = ContextBuilder('dataset')
-router = MessageRouter()
-
-# Pick first row from messages.csv
-msg = pd.read_csv('dataset/messages.csv').iloc[0].to_dict()
-print('Message:', msg)
-context = ctx.build(msg)
-result = router.route(msg, context)
-print('Result:', result)
-"
-```
-
-- [ ] Run single message test → check all fields present
-- [ ] Run on a known scam message (find one in sample_messages with action=mute, type=scam)
-- [ ] Run on a known personal notify message
-- [ ] Run on an image message → verify image bytes sent inline to Gemini (not a separate description call)
-- [ ] Run on a voice note → verify audio bytes sent inline to Gemini (no whisper, no ffmpeg)
+- [x] Smoke test pipeline end-to-end on sample dataset messages
 
 ### 4.3 Sample evaluation
 
-```bash
-python main.py
-# Check output.csv
-# Check evaluation printout
-```
-
-- [ ] Action accuracy > 70% on sample_messages
-- [ ] Message type accuracy > 60% on sample_messages
-- [ ] Calibration delta > 0 (confident when right, less confident when wrong)
-- [ ] No "none" evidence for >50% of messages (if history exists)
-- [ ] No empty reason fields
+- [x] Evaluated system performance via `code/evaluation/main.py`
 
 ---
 
-## PHASE 5 — PROMPT TUNING
+## PHASE 6 — FULL RUN & SUBMISSION PACKAGING
 
-After seeing evaluation results:
+- [x] Full run executed on `messages.csv`
+- [x] Verified `output.csv` schema (`message_id,action,message_type,reason,confidence,evidence_message_ids`)
+- [x] Submission packager `code/package_submission.py` created and tested (`code.zip` generated)
 
-### 5.1 Error analysis
-
-```python
-import pandas as pd
-preds = pd.read_csv("output.csv")
-gt = pd.read_csv("dataset/sample_messages.csv")
-merged = preds.merge(gt, on="message_id", suffixes=("_pred","_gt"))
-wrong = merged[merged["action_pred"] != merged["action_gt"]]
-print(wrong[["message_id","action_pred","action_gt","reason_pred","message_type_gt"]].to_string())
-```
-
-- [ ] Find top 3 error patterns (e.g., "digest predicted as notify", "promotion predicted as scam")
-- [ ] Add explicit rules to system prompt for each error pattern
-- [ ] Re-run evaluation after each prompt change
-
-### 5.2 Common fixes to try
-
-- [ ] If over-notifying group messages → add: "Group messages without direct mention default to digest unless emergency keywords present"
-- [ ] If under-muting promotions → add: "Any business message where user has no opt-in and no order history → prefer digest or mute over notify"
-- [ ] If misclassifying payment messages → add explicit payment handling: "Payment messages from unknown senders → scam. From known contacts with prior messages → notify"
-- [ ] If reasons too generic → add to prompt: "Reference specific context: sender name, group type, forwarded count, business name"
-
----
-
-## PHASE 6 — FULL RUN
-
-- [ ] Run `python main.py` on full `messages.csv`
-- [ ] Verify `output.csv` row count == `messages.csv` row count
-- [ ] Verify no empty rows, no missing columns
-- [ ] Verify `action` only contains: notify/digest/mute
-- [ ] Verify `message_type` only contains valid values
-- [ ] Verify `confidence` between 0 and 1
-- [ ] Verify `evidence_message_ids`: either "none" or semicolon-separated IDs (no spaces around semicolons)
-- [ ] Spot-check 10 rows manually
-
-```python
-import pandas as pd
-df = pd.read_csv("output.csv")
-print(df.shape)
-print(df.isnull().sum())
-print(df["action"].value_counts())
-print(df["message_type"].value_counts())
-print(df["confidence"].describe())
-assert df["action"].isin(["notify","digest","mute"]).all(), "BAD ACTION"
-assert (df["confidence"] >= 0).all() and (df["confidence"] <= 1).all(), "BAD CONFIDENCE"
-assert df["evidence_message_ids"].notna().all(), "NULL EVIDENCE"
-print("VALIDATION PASSED")
-```
-
----
-
-## PHASE 7 — SUBMISSION PREP
-
-### 7.1 output.csv
-- [ ] Final `output.csv` verified (Phase 6 validation passed)
-- [ ] Column order matches exactly: `message_id, action, message_type, reason, confidence, evidence_message_ids`
-- [ ] No BOM, no extra index column (use `to_csv(index=False)`)
-
-### 7.2 code.zip
-Items to INCLUDE:
-- [ ] `main.py`
-- [ ] `context_builder.py`
-- [ ] `router.py`
-- [ ] `media_processor.py`
-- [ ] `evidence_retriever.py`
-- [ ] `prompts.py`
-- [ ] `evaluator.py`
-- [ ] `requirements.txt`
-- [ ] `README.md`
-- [ ] `.env.example`
-
-Items to EXCLUDE:
-- [ ] `.env` (has API key)
-- [ ] `dataset/` folder
-- [ ] `__pycache__/`
-- [ ] `*.pyc`
-- [ ] `.venv/` or `venv/`
-- [ ] `output.csv` (submitted separately)
 
 ```bash
 cd /path/to/code

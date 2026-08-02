@@ -31,7 +31,6 @@ class MessageRouter:
         prompt_text = build_user_prompt(context, evidence_ids)
         contents = []
 
-        # Prepare multimodal inputs if attachment exists
         media_ctx = context.get("media")
         if media_ctx and media_ctx.get("full_path") and os.path.exists(media_ctx["full_path"]):
             full_path = media_ctx["full_path"]
@@ -50,13 +49,11 @@ class MessageRouter:
                         )
                     )
                     contents.append(audio_part)
-            except Exception as e:
-                # Log media load error silently and continue with text prompt
+            except Exception:
                 pass
 
         contents.append(prompt_text)
 
-        # Call Gemini with Exponential Backoff Retries
         response_text = None
         for attempt in range(max_retries):
             try:
@@ -65,7 +62,6 @@ class MessageRouter:
                     response_text = response.text
                     break
                 elif hasattr(response, "prompt_feedback") and response.prompt_feedback:
-                    # Content blocked by safety filters
                     return self._fallback_blocked_response(context, evidence_ids)
             except Exception as err:
                 err_str = str(err)
@@ -78,13 +74,11 @@ class MessageRouter:
         if not response_text:
             return self._fallback_rule_response(context, evidence_ids)
 
-        # Parse JSON response
         return self._parse_response(response_text, context, evidence_ids)
 
     def _parse_response(self, text, context, evidence_ids):
         """Parse JSON output from Gemini response string."""
         try:
-            # Match JSON object block
             match = re.search(r'\{.*\}', text, re.DOTALL)
             if match:
                 data = json.loads(match.group(0))
@@ -96,23 +90,34 @@ class MessageRouter:
             reason = clean_val(data.get("reason")) or "Message processed based on content and user preferences."
             confidence = float(data.get("confidence", 0.84))
             
-            # Normalize action
             if action not in ("notify", "digest", "mute"):
                 action = "digest"
                 
-            # Truncate reason if too long
             if len(reason) > 280:
                 reason = reason[:277] + "..."
+                
+            calibrated_conf = self.calibrate_confidence(confidence, context)
                 
             return {
                 "action": action,
                 "message_type": message_type,
                 "reason": reason,
-                "confidence": round(confidence, 2),
+                "confidence": round(calibrated_conf, 2),
                 "evidence_message_ids": evidence_ids
             }
         except Exception:
             return self._fallback_rule_response(context, evidence_ids)
+
+    def calibrate_confidence(self, confidence: float, context: dict) -> float:
+        """Calibrate confidence based on richness of available context."""
+        user_ctx = context.get("user", {})
+        group_ctx = context.get("group", {})
+        biz_ctx = context.get("business", {})
+        
+        # If very minimal context available, slightly temper confidence
+        if not user_ctx and not group_ctx and not biz_ctx:
+            confidence = min(confidence, 0.72)
+        return max(0.60, min(0.95, confidence))
 
     def _fallback_blocked_response(self, context, evidence_ids):
         return {
@@ -124,7 +129,6 @@ class MessageRouter:
         }
 
     def _fallback_rule_response(self, context, evidence_ids):
-        """Rule-based fallback if API call fails or times out."""
         conv_type = context.get("conversation_type")
         in_quiet = context.get("in_quiet_hours", False)
         

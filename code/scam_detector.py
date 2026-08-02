@@ -10,7 +10,7 @@ SCAM_TEXT_PATTERNS = [
     (r'\b(kbc|kaun\ banega\ crorepati)\b', 'KBC lottery scam.'),
 ]
 
-def check_scam(message_text, biz_info=None):
+def check_scam(message_text, biz_info=None, forwarded_count=0):
     """
     Check if a message is a high-confidence scam or phishing attempt.
     Returns: (is_scam, dict_result) or (False, None)
@@ -25,7 +25,6 @@ def check_scam(message_text, biz_info=None):
         verified = biz_info.get("verified", 1)
         
         if official and sender_dom and official.lower() != sender_dom.lower():
-            # Domain spoofing!
             return True, {
                 "action": "mute",
                 "message_type": "scam",
@@ -54,4 +53,18 @@ def check_scam(message_text, biz_info=None):
                 "evidence_message_ids": "none"
             }
             
+    # 3. High Forward Count Spam/Scam Guard
+    try:
+        fwd = int(forwarded_count or 0)
+        if fwd >= 8 and any(kw in text_lower for kw in ["forwarded", "viral", "cash", "offer", "win", "gift"]):
+            return True, {
+                "action": "mute",
+                "message_type": "spam",
+                "reason": "Highly forwarded viral chain message suppressed as potential spam.",
+                "confidence": 0.88,
+                "evidence_message_ids": "none"
+            }
+    except Exception:
+        pass
+
     return False, None
